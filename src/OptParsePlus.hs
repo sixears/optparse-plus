@@ -1,8 +1,8 @@
 {-# LANGUAGE UnicodeSyntax #-}
 
 module OptParsePlus
-  ( argS, completePrintables, parserPrefs, parseOpts, readT, textualArgument
-  , textualOption, usageFailure, usageFailureCode
+  ( argS, argT, completePrintables, optT, parserPrefs, parseOpts, readT
+  , textualArgument, textualOption, usageFailure, usageFailureCode
   )
 where
 
@@ -76,8 +76,17 @@ readT = eitherReader parseTextual
 
 ----------------------------------------
 
+argT ∷ (Textual α, Typeable α) ⇒ Mod ArgumentFields α → Parser α
+argT = argument readT
+
+{-# DEPRECATED argS "use `argT` instead" #-}
 argS ∷ (Textual α, Typeable α) ⇒ Mod ArgumentFields α → Parser α
-argS = argument readT
+argS = argT
+
+----------------------------------------
+
+optT ∷ (Textual α, Typeable α) ⇒ Mod OptionFields α → Parser α
+optT = option readT
 
 ----------------------------------------
 
