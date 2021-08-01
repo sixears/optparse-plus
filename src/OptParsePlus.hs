@@ -1,30 +1,38 @@
-{-# LANGUAGE UnicodeSyntax #-}
-
 module OptParsePlus
-  ( argS, argT, completePrintables, optT, parserPrefs, parseOpts, readT
-  , textualArgument, textualOption, usageFailure, usageFailureCode
+  ( argS, argT, completePrintables, optT, parserPrefs, parseOpts, parseOpts'
+  , parsecArgument
+  , parsecOption, parsecReader, readT, textualArgument, textualOption
+  , usageFailure, usageFailureCode
+
+  , ToDoc( toDoc ), (⊞)
+  , finalFullStop, listDQOr, listSlash, listDQSlash, listW, toDocT, toDocTs
   )
 where
 
-import Prelude  ( fromIntegral )
+import Prelude  ( Int, error, fromIntegral )
 
 -- base --------------------------------
 
-import Control.Monad       ( return, when )
-import Data.Eq             ( Eq )
-import Data.Foldable       ( Foldable, toList )
-import Data.Function       ( ($), flip )
+import Control.Monad       ( return )
+import Data.Bifunctor      ( first )
+import Data.Foldable       ( Foldable, foldr, toList )
+import Data.Function       ( ($), (&), flip, id )
 import Data.Functor        ( fmap )
-import Data.Maybe          ( Maybe, fromMaybe )
+import Data.List           ( intersperse )
+import Data.Maybe          ( fromMaybe )
+import Data.String         ( String )
 import Data.Typeable       ( Typeable )
 import Data.Word           ( Word8 )
-import System.Environment  ( getProgName )
+import System.Environment  ( getArgs, getProgName )
+import System.Exit         ( ExitCode( ExitFailure, ExitSuccess )
+                           , exitSuccess, exitWith )
+import System.IO           ( IO, hPutStrLn, putStr, putStrLn, stderr )
 import Text.Show           ( Show( show ) )
 
 -- base-unicode-symbols ----------------
 
-import Data.Eq.Unicode        ( (≡) )
 import Data.Function.Unicode  ( (∘) )
+import Data.List.Unicode      ( (∈) )
 import Data.Monoid.Unicode    ( (⊕) )
 
 -- data-textual ------------------------
@@ -35,31 +43,74 @@ import Data.Textual  ( Printable, Textual, toString )
 
 import Exited  ( exitWith' )
 
--- more-unicode ------------------------
+-- extra -------------------------------
 
-import Data.MoreUnicode.Applicative  ( (⊵) )
-import Data.MoreUnicode.Functor      ( (⊳) )
+import Data.List.Extra  ( unsnoc )
 
--- optparse-applicative ----------------
+-- lens --------------------------------
 
-import Options.Applicative.Builder
-                              ( ArgumentFields, HasCompleter, InfoMod, Mod
-                              , OptionFields, ReadM
-                              , argument, completeWith, eitherReader
-                              , failureCode, flag, fullDesc, info, long, option
-                              , prefs, progDesc, showHelpOnEmpty
-                              , showHelpOnError
-                              )
-import Options.Applicative.Help.Core
-                              ( parserHelp, parserUsage )
-import Options.Applicative.Extra
-                              ( ParserPrefs, customExecParser )
-import Options.Applicative.Types
-                              ( Parser )
+import Control.Lens.Tuple  ( _2 )
 
 -- monadio-plus ------------------------
 
-import MonadIO  ( MonadIO, liftIO, warn )
+import MonadIO  ( MonadIO, liftIO )
+
+-- more-unicode ------------------------
+
+import Data.MoreUnicode.Applicative  ( (∤) )
+import Data.MoreUnicode.Either       ( pattern 𝕷, pattern 𝕽 )
+import Data.MoreUnicode.Functor      ( (⊳), (⊳⊳) )
+import Data.MoreUnicode.Lens         ( (⊢) )
+import Data.MoreUnicode.Monad        ( (≫) )
+import Data.MoreUnicode.Maybe        ( 𝕄, pattern 𝕵, pattern 𝕹 )
+import Data.MoreUnicode.Natural      ( ℕ )
+
+-- optparse-applicative ----------------
+
+import qualified  Options.Applicative.Extra
+import qualified  Options.Applicative.Types
+
+import Options.Applicative.BashCompletion
+                              ( bashCompletionParser )
+import Options.Applicative.Builder
+                              ( ArgumentFields, HasCompleter, InfoMod, Mod
+                              , OptionFields, ReadM
+                              , argument, columns, completeWith, eitherReader
+                              , failureCode, fullDesc, info, option, prefs
+                              )
+import Options.Applicative.Common
+                              ( runParserInfo )
+import Options.Applicative.Extra
+                              ( ParserFailure, ParserPrefs
+                              , execParserPure, renderFailure )
+import Options.Applicative.Help.Core
+                              ( footerHelp, headerHelp, parserHelp
+                              , parserUsage )
+import Options.Applicative.Help.Pretty
+                              ( Doc, (<+>), comma, displayS, dquotes, empty
+                              , fillSep , punctuate, renderPretty, space, text
+                              , vcat
+                              )
+import Options.Applicative.Internal
+                              ( runP )
+import Options.Applicative.Types
+                              ( Context, Parser, ParserFailure( ParserFailure )
+                              , ParserInfo, ParserHelp
+                              , ParserResult( CompletionInvoked, Failure
+                                            , Success )
+                              , execCompletion, infoFooter, infoHeader
+                              , infoParser
+                              )
+import Options.Applicative.Help.Types
+                              ( renderHelp )
+
+-- parsec-plus -------------------------
+
+import ParsecPlus  ( ParseError, Parsecable, parsec )
+
+-- terminal-size -----------------------
+
+import qualified  System.Console.Terminal.Size  as  TerminalSize
 
 -- textual-plus ------------------------
 
@@ -67,7 +118,7 @@ import TextualPlus  ( parseTextual )
 
 -- text --------------------------------
 
-import Data.Text  ( Text, pack, unpack )
+import Data.Text  ( Text, intercalate, pack, unpack, words )
 
 --------------------------------------------------------------------------------
 
@@ -111,9 +162,10 @@ completePrintables = completeWith ∘ fmap toString ∘ toList
 
 ----------------------------------------
 
--- | standard parser preferences
-parserPrefs ∷ ParserPrefs
-parserPrefs = prefs $ showHelpOnError ⊕ showHelpOnEmpty
+{- | Standard parser preferences.  Input is terminal width. -}
+parserPrefs ∷ ℕ → ParserPrefs
+parserPrefs width = let -- width = (fromIntegral $ fromMaybe 80 w)
+                     in prefs $ {- showHelpOnError ⊕ -} {- showHelpOnEmpty ⊕ -} columns (fromIntegral width)
 
 ----------------------------------------
 
@@ -129,43 +181,207 @@ usageFailure = failureCode (fromIntegral usageFailureCode)
 
 ----------------------------------------
 
-data DoHelp = DoHelp | NoHelp
-  deriving (Eq, Show)
+data HelpWith' α = DoHelp | NoHelp α
 
 --------------------
 
-data HelpWith α = HelpWith { _alpha ∷ α, _doHelp ∷ DoHelp }
+myExecParser' ∷ ParserPrefs → ParserInfo α → IO (HelpWith' α)
+myExecParser' pprefs pinfo = do
+  args ← getArgs
+  if "--help" ∈ args {- ∨ any ("--help=" `isPrefixOf`) args -}
+  then return DoHelp
+  else NoHelp ⊳ handleParseResult (execParserPure pprefs pinfo args)
+
+
+-- | Handle `ParserResult`.
+handleParseResult :: ParserResult a -> IO a
+handleParseResult (Success a) = return a
+handleParseResult (Failure failure) = do
+      progn <- getProgName
+      let (msg, exit) = renderFailure failure progn
+      case exit of
+        ExitSuccess -> putStrLn msg
+        _           -> hPutStrLn stderr msg
+      exitWith exit
+handleParseResult (CompletionInvoked compl) = do
+      progn <- getProgName
+      msg <- execCompletion compl progn
+      putStr msg
+      exitSuccess
 
 --------------------
 
-parseHelpWith ∷ Parser α → Parser (HelpWith α)
-parseHelpWith f = HelpWith ⊳ f ⊵ flag NoHelp DoHelp (long "help")
+{-| A variant on `Options.Applicative.Extra.parserFailure`, that returns exit 2
+    in case of --help. -}
+parserFailure' ∷ ParserPrefs → ParserInfo a
+               → Options.Applicative.Types.ParseError → [Context]
+               → ParserFailure ParserHelp
+parserFailure' pprefs pinfo msg ctx =
+  let
+    pf@(ParserFailure f) =
+      Options.Applicative.Extra.parserFailure pprefs pinfo msg ctx
+  in
+    case msg of
+      Options.Applicative.Types.ShowHelpText {} →
+        ParserFailure $ (& _2 ⊢ ExitFailure (fromIntegral usageFailureCode)) ∘ f
+      _ → pf
 
---------------------
+
+{-| A variant on `Options.Applicative.Extra.execParserPure`, that calls
+    our `parserFailure'`. -}
+execParserPure' ∷ ParserPrefs       -- ^ Global preferences for this parser
+                → ParserInfo a      -- ^ Description of the program to run
+                → [String]          -- ^ Program arguments
+                → ParserResult a
+execParserPure' pprefs pinfo args =
+  case runP p pprefs of
+    (𝕽 (𝕽 r), _) → Success r
+    (𝕽 (𝕷 c), _) → CompletionInvoked c
+    (𝕷 err, ctx) → Failure $ parserFailure' pprefs pinfo err ctx
+  where
+    pinfo' = pinfo
+      { infoParser = (𝕷 ⊳ bashCompletionParser pinfo pprefs)
+                   ∤ (𝕽 ⊳ infoParser pinfo) }
+    p = runParserInfo pinfo' args
+
+----------------------------------------
+
+{-| A variant on `Options.Applicative.Extra.customExecParser`, that calls
+    our `execParserPure'`. -}
+customExecParser' ∷ ParserPrefs → ParserInfo a → IO a
+customExecParser' pprefs pinfo =
+  execParserPure' pprefs pinfo ⊳ getArgs ≫ handleParseResult
+
+----------------------------------------
+
+{- | A new version of `parseOpts`, that uses more Options.Applicative code;
+     but still (hopefully) exits 2 in case of `--help`.  In particular, this
+     version should supercede `parseOpts`, and better respect `hsubparser`.
+
+     If this works, it will replace `parseOpts`.
+ -}
+parseOpts' ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
+                         --   "some description"`
+                        InfoMod α
+                      → Parser α   -- ^ proggie opts parser
+                      → μ α
+parseOpts' baseinfo prsr = liftIO $ do
+  width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
+  let pprefs = parserPrefs (fromIntegral width)
+  customExecParser' pprefs (info prsr (fullDesc ⊕ baseinfo ⊕ usageFailure))
+
 
 {- | Parse options, with description, helper, shows help on error and missing
      parameters.  Also exits 2 if --help is called - this is because the exit
-     code is most commonly used within scripts, when calling --help is almost
+     code is most commonly used within scripts, where calling --help is almost
      certainly not what was intended.
 -}
-parseOpts ∷ MonadIO μ ⇒ Maybe Text -- ^ program name (or uses `getProgName`)
-                      → Text       -- ^ brief program description
+parseOpts ∷ MonadIO μ ⇒ 𝕄 Text -- ^ program name (or uses `getProgName`)
+                      -- | base infomod for parser; typically `progDesc
+                      --   "some description"`
+                      → InfoMod α
                       → Parser α   -- ^ proggie opts parser
                       → μ α
-parseOpts progn descn prsr = liftIO $ do
-  let infoMod = fullDesc ⊕ progDesc (toString descn) ⊕ usageFailure
-      prsr'   = parseHelpWith prsr
-  opts ← customExecParser parserPrefs (info prsr' infoMod)
+parseOpts progn baseinfo prsr = liftIO $ do
+  width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
+  let infoMod = fullDesc ⊕ baseinfo ⊕ usageFailure
+      pprefs  = parserPrefs (fromIntegral width)
+      showHelp ∷ ParserHelp → IO()
+      showHelp = hPutStrLn stderr ∘ renderHelp width
+      showDoc  ∷ Doc → IO()
+      showDoc  = hPutStrLn stderr ∘ (`displayS` "") ∘ renderPretty 1.0 width
+  hopts  ← myExecParser' pprefs (info prsr infoMod)
   progn' ← flip fromMaybe progn ⊳ (pack ⊳ getProgName)
-  when (DoHelp ≡ _doHelp opts) $ do
-    let usage = parserUsage parserPrefs prsr (unpack progn')
-        help  = parserHelp  parserPrefs prsr
-    warn (show usage)
-    warn (show help)
-    -- Note that usage failures, including using --help in the 'wrong' place,
-    -- will result in a showHelpOnError failure; so we use the same exit code.
-    _ ← exitWith' usageFailureCode
-    return ()
-  return $ _alpha opts
+  case hopts of
+    NoHelp opts → return opts
+    DoHelp → do
+      let usage = parserUsage pprefs prsr (unpack progn')
+          i     = info prsr infoMod
+      showDoc usage
+      showHelp $ headerHelp (infoHeader i)
+      showHelp $ parserHelp pprefs (infoParser i)
+      showHelp $ footerHelp (infoFooter i)
+      _ ← exitWith' usageFailureCode
+      error "unreachable code in parseOpts"
+
+
+----------------------------------------
+
+parsecReader ∷ Parsecable α ⇒ ReadM α
+parsecReader = eitherReader (\ s → first show $ parsec @_ @ParseError s s)
+
+----------------------------------------
+
+parsecOption ∷ Parsecable α ⇒ Mod OptionFields α → Parser α
+parsecOption = option parsecReader
+
+----------------------------------------
+
+parsecArgument ∷ Parsecable α ⇒ Mod ArgumentFields α → Parser α
+parsecArgument = argument parsecReader
+
+----------------------------------------
+
+infixr 6 ⊞
+(⊞) ∷ Doc → Doc → Doc
+(⊞) = (<+>)
+
+{- | Simple auto-conversions to Doc. -}
+class ToDoc α where
+  toDoc ∷ α → Doc
+
+instance ToDoc Doc where
+  toDoc = id
+
+instance ToDoc Text where
+  {- | The text is broken (on spaces) into words; and then re-joined with
+       breaking spaces (⊞) between them, to form a flowable paragraph. -}
+  toDoc ts = fillSep $ fmap (text ∘ unpack) (words ts)
+
+instance ToDoc [Text] where
+  {- | The text is broken (on spaces) into words; and then re-joined with
+       breaking spaces (⊞) between them, to form a flowable paragraph. -}
+  toDoc ts = fillSep $ fmap (text ∘ unpack) (ts ≫ words)
+
+instance ToDoc [[Text]] where
+  {- | Each text list is assembled into a flowing paragraph; each para is
+       separated by a blank line. -}
+  toDoc tss = vcat $ intersperse space (toDoc ⊳ tss)
+
+instance ToDoc [Doc] where
+  {- | Each doc is separated by a blank line. -}
+  toDoc ds = vcat $ intersperse space ds
+
+toDocT ∷ Text → Doc
+toDocT = toDoc
+
+toDocTs ∷ [Text] → Doc
+toDocTs = toDoc
+
+{- | Create a list by joining words (which are surrounded with double-quotes)
+     with ", ", except for the last, which is joined with "or". -}
+listDQOr ∷ [String] → Doc
+listDQOr (unsnoc → 𝕹)     = empty
+listDQOr (unsnoc → 𝕵 (ws,w)) =
+  fillSep (punctuate comma (dquotes ∘ text ⊳ ws)) ⊞ text "or" ⊞ dquotes (text w)
+
+{- | Create a list by joining words (showable things) with ", ". -}
+listW ∷ Show α ⇒ [α] → Doc
+listW xs = toDoc $ intercalate ", " (pack ∘ show ⊳ xs)
+
+{- | Create a list by joining strings with "/". -}
+listSlash ∷ [String] → Doc
+listSlash xs = toDoc $ intercalate "/" (pack ⊳ xs)
+
+{- | Create a list by joining double-quoted strings with "/". -}
+listDQSlash ∷ [String] → Doc
+listDQSlash []     = empty
+listDQSlash (x:xs) =
+  foldr (\ a b → a ⊕ text "/" ⊕ b) (dquotes $ text x) (dquotes ∘ text ⊳ xs)
+
+{- | Add a full stop (period) to the final doc in a list. -}
+finalFullStop ∷ [Doc] → [Doc]
+finalFullStop (unsnoc → 𝕵 (ds,d)) = ds ⊕ [d ⊕ text "."]
+finalFullStop (unsnoc → 𝕹)     = []
 
 -- that's all, folks! ----------------------------------------------------------
