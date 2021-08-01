@@ -1,3 +1,7 @@
+1.1.0.0 2021-08-01
+==================
+- replace parseOpts with parseOpts', which is now deprecated
+
 1.0.3.0 2021-07-31
 ==================
 - add parseOpts', which hopefully has better `hsubparser` handling

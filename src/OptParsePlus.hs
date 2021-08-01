@@ -9,14 +9,14 @@ module OptParsePlus
   )
 where
 
-import Prelude  ( Int, error, fromIntegral )
+import Prelude  ( Int, fromIntegral )
 
 -- base --------------------------------
 
 import Control.Monad       ( return )
 import Data.Bifunctor      ( first )
 import Data.Foldable       ( Foldable, foldr, toList )
-import Data.Function       ( ($), (&), flip, id )
+import Data.Function       ( ($), (&), id )
 import Data.Functor        ( fmap )
 import Data.List           ( intersperse )
 import Data.Maybe          ( fromMaybe )
@@ -32,16 +32,11 @@ import Text.Show           ( Show( show ) )
 -- base-unicode-symbols ----------------
 
 import Data.Function.Unicode  ( (∘) )
-import Data.List.Unicode      ( (∈) )
 import Data.Monoid.Unicode    ( (⊕) )
 
 -- data-textual ------------------------
 
 import Data.Textual  ( Printable, Textual, toString )
-
--- exited ------------------------------
-
-import Exited  ( exitWith' )
 
 -- extra -------------------------------
 
@@ -62,7 +57,7 @@ import Data.MoreUnicode.Either       ( pattern 𝕷, pattern 𝕽 )
 import Data.MoreUnicode.Functor      ( (⊳), (⊳⊳) )
 import Data.MoreUnicode.Lens         ( (⊢) )
 import Data.MoreUnicode.Monad        ( (≫) )
-import Data.MoreUnicode.Maybe        ( 𝕄, pattern 𝕵, pattern 𝕹 )
+import Data.MoreUnicode.Maybe        ( pattern 𝕵, pattern 𝕹 )
 import Data.MoreUnicode.Natural      ( ℕ )
 
 -- optparse-applicative ----------------
@@ -81,16 +76,10 @@ import Options.Applicative.Builder
 import Options.Applicative.Common
                               ( runParserInfo )
 import Options.Applicative.Extra
-                              ( ParserFailure, ParserPrefs
-                              , execParserPure, renderFailure )
-import Options.Applicative.Help.Core
-                              ( footerHelp, headerHelp, parserHelp
-                              , parserUsage )
+                              ( ParserFailure, ParserPrefs, renderFailure )
 import Options.Applicative.Help.Pretty
-                              ( Doc, (<+>), comma, displayS, dquotes, empty
-                              , fillSep , punctuate, renderPretty, space, text
-                              , vcat
-                              )
+                              ( Doc, (<+>), comma, dquotes, empty, fillSep
+                              , punctuate, space, text, vcat )
 import Options.Applicative.Internal
                               ( runP )
 import Options.Applicative.Types
@@ -98,11 +87,8 @@ import Options.Applicative.Types
                               , ParserInfo, ParserHelp
                               , ParserResult( CompletionInvoked, Failure
                                             , Success )
-                              , execCompletion, infoFooter, infoHeader
-                              , infoParser
+                              , execCompletion, infoParser
                               )
-import Options.Applicative.Help.Types
-                              ( renderHelp )
 
 -- parsec-plus -------------------------
 
@@ -181,18 +167,6 @@ usageFailure = failureCode (fromIntegral usageFailureCode)
 
 ----------------------------------------
 
-data HelpWith' α = DoHelp | NoHelp α
-
---------------------
-
-myExecParser' ∷ ParserPrefs → ParserInfo α → IO (HelpWith' α)
-myExecParser' pprefs pinfo = do
-  args ← getArgs
-  if "--help" ∈ args {- ∨ any ("--help=" `isPrefixOf`) args -}
-  then return DoHelp
-  else NoHelp ⊳ handleParseResult (execParserPure pprefs pinfo args)
-
-
 -- | Handle `ParserResult`.
 handleParseResult :: ParserResult a -> IO a
 handleParseResult (Success a) = return a
@@ -254,56 +228,28 @@ customExecParser' pprefs pinfo =
 
 ----------------------------------------
 
-{- | A new version of `parseOpts`, that uses more Options.Applicative code;
-     but still (hopefully) exits 2 in case of `--help`.  In particular, this
-     version should supercede `parseOpts`, and better respect `hsubparser`.
-
-     If this works, it will replace `parseOpts`.
- -}
-parseOpts' ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
-                         --   "some description"`
-                        InfoMod α
-                      → Parser α   -- ^ proggie opts parser
-                      → μ α
-parseOpts' baseinfo prsr = liftIO $ do
-  width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
-  let pprefs = parserPrefs (fromIntegral width)
-  customExecParser' pprefs (info prsr (fullDesc ⊕ baseinfo ⊕ usageFailure))
-
-
 {- | Parse options, with description, helper, shows help on error and missing
      parameters.  Also exits 2 if --help is called - this is because the exit
      code is most commonly used within scripts, where calling --help is almost
      certainly not what was intended.
 -}
-parseOpts ∷ MonadIO μ ⇒ 𝕄 Text -- ^ program name (or uses `getProgName`)
-                      -- | base infomod for parser; typically `progDesc
-                      --   "some description"`
-                      → InfoMod α
+parseOpts ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
+                        --   "some description"`
+                        InfoMod α
                       → Parser α   -- ^ proggie opts parser
                       → μ α
-parseOpts progn baseinfo prsr = liftIO $ do
+parseOpts baseinfo prsr = liftIO $ do
   width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
-  let infoMod = fullDesc ⊕ baseinfo ⊕ usageFailure
-      pprefs  = parserPrefs (fromIntegral width)
-      showHelp ∷ ParserHelp → IO()
-      showHelp = hPutStrLn stderr ∘ renderHelp width
-      showDoc  ∷ Doc → IO()
-      showDoc  = hPutStrLn stderr ∘ (`displayS` "") ∘ renderPretty 1.0 width
-  hopts  ← myExecParser' pprefs (info prsr infoMod)
-  progn' ← flip fromMaybe progn ⊳ (pack ⊳ getProgName)
-  case hopts of
-    NoHelp opts → return opts
-    DoHelp → do
-      let usage = parserUsage pprefs prsr (unpack progn')
-          i     = info prsr infoMod
-      showDoc usage
-      showHelp $ headerHelp (infoHeader i)
-      showHelp $ parserHelp pprefs (infoParser i)
-      showHelp $ footerHelp (infoFooter i)
-      _ ← exitWith' usageFailureCode
-      error "unreachable code in parseOpts"
+  let pprefs = parserPrefs (fromIntegral width)
+  customExecParser' pprefs (info prsr (fullDesc ⊕ baseinfo ⊕ usageFailure))
 
+{- | DEPRECATED parseOpts' "use parseOpts" -}
+parseOpts' ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
+                         --   "some description"`
+                         InfoMod α
+                       → Parser α   -- ^ proggie opts parser
+                       → μ α
+parseOpts' = parseOpts
 
 ----------------------------------------
 
