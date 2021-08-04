@@ -1,3 +1,7 @@
+1.1.1.0 2021-08-03
+==================
+- add parseNE, sepByNE, parsecReadM
+
 1.1.0.0 2021-08-01
 ==================
 - replace parseOpts with parseOpts', which is now deprecated

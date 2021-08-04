@@ -1,7 +1,7 @@
 module OptParsePlus
   ( argS, argT, completePrintables, optT, parserPrefs, parseOpts, parseOpts'
-  , parsecArgument
-  , parsecOption, parsecReader, readT, textualArgument, textualOption
+  , parsecArgument, parseNE, parsecOption
+  , parsecReader, parsecReadM, readT, sepByNE, textualArgument, textualOption
   , usageFailure, usageFailureCode
 
   , ToDoc( toDoc ), (⊞)
@@ -13,21 +13,22 @@ import Prelude  ( Int, fromIntegral )
 
 -- base --------------------------------
 
-import Control.Monad       ( return )
-import Data.Bifunctor      ( first )
-import Data.Foldable       ( Foldable, foldr, toList )
-import Data.Function       ( ($), (&), id )
-import Data.Functor        ( fmap )
-import Data.List           ( intersperse )
-import Data.Maybe          ( fromMaybe )
-import Data.String         ( String )
-import Data.Typeable       ( Typeable )
-import Data.Word           ( Word8 )
-import System.Environment  ( getArgs, getProgName )
-import System.Exit         ( ExitCode( ExitFailure, ExitSuccess )
-                           , exitSuccess, exitWith )
-import System.IO           ( IO, hPutStrLn, putStr, putStrLn, stderr )
-import Text.Show           ( Show( show ) )
+import Control.Applicative  ( Alternative, many )
+import Control.Monad        ( return )
+import Data.Bifunctor       ( first )
+import Data.Foldable        ( Foldable, foldr, toList )
+import Data.Function        ( ($), (&), id )
+import Data.Functor         ( fmap )
+import Data.List            ( intersperse )
+import Data.List.NonEmpty   ( NonEmpty( (:|) ), fromList )
+import Data.Maybe           ( fromMaybe )
+import Data.Typeable        ( Typeable )
+import Data.Word            ( Word8 )
+import System.Environment   ( getArgs, getProgName )
+import System.Exit          ( ExitCode( ExitFailure, ExitSuccess )
+                            , exitSuccess, exitWith )
+import System.IO            ( IO, hPutStrLn, putStr, putStrLn, stderr )
+import Text.Show            ( Show( show ) )
 
 -- base-unicode-symbols ----------------
 
@@ -52,13 +53,14 @@ import MonadIO  ( MonadIO, liftIO )
 
 -- more-unicode ------------------------
 
-import Data.MoreUnicode.Applicative  ( (∤) )
+import Data.MoreUnicode.Applicative  ( (⊵), (⋪), (∤) )
 import Data.MoreUnicode.Either       ( pattern 𝕷, pattern 𝕽 )
 import Data.MoreUnicode.Functor      ( (⊳), (⊳⊳) )
 import Data.MoreUnicode.Lens         ( (⊢) )
 import Data.MoreUnicode.Monad        ( (≫) )
 import Data.MoreUnicode.Maybe        ( pattern 𝕵, pattern 𝕹 )
 import Data.MoreUnicode.Natural      ( ℕ )
+import Data.MoreUnicode.String       ( 𝕊 )
 
 -- optparse-applicative ----------------
 
@@ -90,9 +92,17 @@ import Options.Applicative.Types
                               , execCompletion, infoParser
                               )
 
+-- parsec ------------------------------
+
+import Text.Parsec  ( Parsec, SourceName, parse )
+
 -- parsec-plus -------------------------
 
 import ParsecPlus  ( ParseError, Parsecable, parsec )
+
+-- parsers -----------------------------
+
+import Text.Parser.Combinators  ( eof, sepBy1 )
 
 -- terminal-size -----------------------
 
@@ -205,7 +215,7 @@ parserFailure' pprefs pinfo msg ctx =
     our `parserFailure'`. -}
 execParserPure' ∷ ParserPrefs       -- ^ Global preferences for this parser
                 → ParserInfo a      -- ^ Description of the program to run
-                → [String]          -- ^ Program arguments
+                → [𝕊]               -- ^ Program arguments
                 → ParserResult a
 execParserPure' pprefs pinfo args =
   case runP p pprefs of
@@ -306,7 +316,7 @@ toDocTs = toDoc
 
 {- | Create a list by joining words (which are surrounded with double-quotes)
      with ", ", except for the last, which is joined with "or". -}
-listDQOr ∷ [String] → Doc
+listDQOr ∷ [𝕊] → Doc
 listDQOr (unsnoc → 𝕹)     = empty
 listDQOr (unsnoc → 𝕵 (ws,w)) =
   fillSep (punctuate comma (dquotes ∘ text ⊳ ws)) ⊞ text "or" ⊞ dquotes (text w)
@@ -316,11 +326,11 @@ listW ∷ Show α ⇒ [α] → Doc
 listW xs = toDoc $ intercalate ", " (pack ∘ show ⊳ xs)
 
 {- | Create a list by joining strings with "/". -}
-listSlash ∷ [String] → Doc
+listSlash ∷ [𝕊] → Doc
 listSlash xs = toDoc $ intercalate "/" (pack ⊳ xs)
 
 {- | Create a list by joining double-quoted strings with "/". -}
-listDQSlash ∷ [String] → Doc
+listDQSlash ∷ [𝕊] → Doc
 listDQSlash []     = empty
 listDQSlash (x:xs) =
   foldr (\ a b → a ⊕ text "/" ⊕ b) (dquotes $ text x) (dquotes ∘ text ⊳ xs)
@@ -329,5 +339,20 @@ listDQSlash (x:xs) =
 finalFullStop ∷ [Doc] → [Doc]
 finalFullStop (unsnoc → 𝕵 (ds,d)) = ds ⊕ [d ⊕ text "."]
 finalFullStop (unsnoc → 𝕹)     = []
+
+----------------------------------------
+
+{- | Parse a NonEmpty list of things; like `some`, but more strongly typed. -}
+parseNE ∷ Parser α → Parser (NonEmpty α)
+parseNE p = (:|) ⊳ p ⊵ many p
+
+{- | Parse a NonEmpty list of things with a separator; like `sepBy1`, but more
+     strongly typed. -}
+sepByNE ∷ Alternative γ ⇒ γ α → γ σ → γ (NonEmpty α)
+sepByNE x s = fromList ⊳ sepBy1 x s
+
+{- | Create a `ReadM` from a parsec parser. -}
+parsecReadM ∷ SourceName → Parsec 𝕊 () α → ReadM α
+parsecReadM nm p = eitherReader (\ s → first show $ parse (p ⋪ eof) nm s)
 
 -- that's all, folks! ----------------------------------------------------------
