@@ -1,3 +1,8 @@
+1.2.0.0 2021-08-15
+==================
+- remove sepByNE (to parser-plus)
+- add readMCommaSet, readNT
+
 1.1.1.0 2021-08-03
 ==================
 - add parseNE, sepByNE, parsecReadM

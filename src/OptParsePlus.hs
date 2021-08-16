@@ -1,8 +1,8 @@
 module OptParsePlus
   ( argS, argT, completePrintables, optT, parserPrefs, parseOpts, parseOpts'
   , parsecArgument, parseNE, parsecOption
-  , parsecReader, parsecReadM, readT, sepByNE, textualArgument, textualOption
-  , usageFailure, usageFailureCode
+  , parsecReader, parsecReadM, readMCommaSet, readNT, readT, textualArgument
+  , textualOption, usageFailure, usageFailureCode
 
   , ToDoc( toDoc ), (⊞)
   , finalFullStop, listDQOr, listSlash, listDQSlash, listW, toDocT, toDocTs
@@ -13,14 +13,15 @@ import Prelude  ( Int, fromIntegral )
 
 -- base --------------------------------
 
-import Control.Applicative  ( Alternative, many )
+import Control.Applicative  ( many, some )
 import Control.Monad        ( return )
 import Data.Bifunctor       ( first )
 import Data.Foldable        ( Foldable, foldr, toList )
 import Data.Function        ( ($), (&), id )
 import Data.Functor         ( fmap )
 import Data.List            ( intersperse )
-import Data.List.NonEmpty   ( NonEmpty( (:|) ), fromList )
+import Data.List.NonEmpty   ( NonEmpty( (:|) ) )
+import Data.Ord             ( Ord )
 import Data.Maybe           ( fromMaybe )
 import Data.Typeable        ( Typeable )
 import Data.Word            ( Word8 )
@@ -28,6 +29,7 @@ import System.Environment   ( getArgs, getProgName )
 import System.Exit          ( ExitCode( ExitFailure, ExitSuccess )
                             , exitSuccess, exitWith )
 import System.IO            ( IO, hPutStrLn, putStr, putStrLn, stderr )
+import Text.Read            ( read )
 import Text.Show            ( Show( show ) )
 
 -- base-unicode-symbols ----------------
@@ -61,6 +63,11 @@ import Data.MoreUnicode.Monad        ( (≫) )
 import Data.MoreUnicode.Maybe        ( pattern 𝕵, pattern 𝕹 )
 import Data.MoreUnicode.Natural      ( ℕ )
 import Data.MoreUnicode.String       ( 𝕊 )
+import Data.MoreUnicode.Text         ( 𝕋 )
+
+-- nonempty-containers -----------------
+
+import Data.Set.NonEmpty  ( NESet )
 
 -- optparse-applicative ----------------
 
@@ -102,7 +109,12 @@ import ParsecPlus  ( ParseError, Parsecable, parsec )
 
 -- parsers -----------------------------
 
-import Text.Parser.Combinators  ( eof, sepBy1 )
+import Text.Parser.Char         ( anyChar, char, digit )
+import Text.Parser.Combinators  ( eof )
+
+-- parser-plus -------------------------
+
+import ParserPlus  ( commaSet )
 
 -- terminal-size -----------------------
 
@@ -114,7 +126,7 @@ import TextualPlus  ( parseTextual )
 
 -- text --------------------------------
 
-import Data.Text  ( Text, intercalate, pack, unpack, words )
+import Data.Text  ( intercalate, pack, unpack, words )
 
 --------------------------------------------------------------------------------
 
@@ -289,17 +301,17 @@ class ToDoc α where
 instance ToDoc Doc where
   toDoc = id
 
-instance ToDoc Text where
+instance ToDoc 𝕋 where
   {- | The text is broken (on spaces) into words; and then re-joined with
        breaking spaces (⊞) between them, to form a flowable paragraph. -}
   toDoc ts = fillSep $ fmap (text ∘ unpack) (words ts)
 
-instance ToDoc [Text] where
+instance ToDoc [𝕋] where
   {- | The text is broken (on spaces) into words; and then re-joined with
        breaking spaces (⊞) between them, to form a flowable paragraph. -}
   toDoc ts = fillSep $ fmap (text ∘ unpack) (ts ≫ words)
 
-instance ToDoc [[Text]] where
+instance ToDoc [[𝕋]] where
   {- | Each text list is assembled into a flowing paragraph; each para is
        separated by a blank line. -}
   toDoc tss = vcat $ intersperse space (toDoc ⊳ tss)
@@ -308,10 +320,10 @@ instance ToDoc [Doc] where
   {- | Each doc is separated by a blank line. -}
   toDoc ds = vcat $ intersperse space ds
 
-toDocT ∷ Text → Doc
+toDocT ∷ 𝕋 → Doc
 toDocT = toDoc
 
-toDocTs ∷ [Text] → Doc
+toDocTs ∷ [𝕋] → Doc
 toDocTs = toDoc
 
 {- | Create a list by joining words (which are surrounded with double-quotes)
@@ -346,13 +358,24 @@ finalFullStop (unsnoc → 𝕹)     = []
 parseNE ∷ Parser α → Parser (NonEmpty α)
 parseNE p = (:|) ⊳ p ⊵ many p
 
-{- | Parse a NonEmpty list of things with a separator; like `sepBy1`, but more
-     strongly typed. -}
-sepByNE ∷ Alternative γ ⇒ γ α → γ σ → γ (NonEmpty α)
-sepByNE x s = fromList ⊳ sepBy1 x s
+----------------------------------------
 
 {- | Create a `ReadM` from a parsec parser. -}
 parsecReadM ∷ SourceName → Parsec 𝕊 () α → ReadM α
 parsecReadM nm p = eitherReader (\ s → first show $ parse (p ⋪ eof) nm s)
+
+----------------------------------------
+
+{- | Parse arguments/options of the form "nn=title", where nn is a natural
+     number and title is text. -}
+readNT ∷ ReadM (ℕ,𝕋)
+readNT =
+  parsecReadM "" ((,) ⊳ (read ⊳ some digit) ⋪ char '=' ⊵ (pack ⊳ some anyChar))
+-- readNT = unNatText ⊳ parsecReader
+
+----------------------------------------
+
+readMCommaSet ∷ Ord α ⇒ SourceName → Parsec 𝕊 () α → ReadM (NESet α)
+readMCommaSet nm p = eitherReader $ commaSet nm p
 
 -- that's all, folks! ----------------------------------------------------------

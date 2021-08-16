@@ -10,7 +10,7 @@ name:                optparse-plus
 -- PVP summary:      +-+------- breaking API changes
 --                   | | +----- non-breaking API additions
 --                   | | | +--- code changes with no API change
-version:             1.1.1.0
+version:             1.2.0.0
 
 -- A short (one-line) description of the package.
 synopsis:            manage info.yaml
@@ -68,12 +68,13 @@ library
 
   -- Other library packages from which modules are imported.
   build-depends:       base, base-unicode-symbols, data-textual, extra, lens
-                     , optparse-applicative, parsec, parsers, terminal-size
-                     , text
+                     , nonempty-containers, optparse-applicative, parsec
+                     , parsers, terminal-size, text
 
-                     , monadio-plus >= 1.4.13.0
+                     , monadio-plus >= 1.4.13.1
                      , more-unicode >= 0.0.15.0
                      , parsec-plus  >= 1.1.0.1
+                     , parser-plus  >= 1.0.5.0
                      , textual-plus >= 1.0.2.0
 
   -- Directories containing source files.
