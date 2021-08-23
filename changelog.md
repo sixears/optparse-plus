@@ -1,3 +1,7 @@
+1.2.1.0 2021-08-23
+==================
+- add parseOpts_ (takes args as argument)
+
 1.2.0.0 2021-08-15
 ==================
 - remove sepByNE (to parser-plus)

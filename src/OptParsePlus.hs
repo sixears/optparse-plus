@@ -1,5 +1,5 @@
 module OptParsePlus
-  ( argS, argT, completePrintables, optT, parserPrefs, parseOpts, parseOpts'
+  ( argS, argT, completePrintables, optT, parserPrefs, parseOpts_, parseOpts
   , parsecArgument, parseNE, parsecOption
   , parsecReader, parsecReadM, readMCommaSet, readNT, readT, textualArgument
   , textualOption, usageFailure, usageFailureCode
@@ -13,6 +13,8 @@ import Prelude  ( Int, fromIntegral )
 
 -- base --------------------------------
 
+import qualified System.Environment
+
 import Control.Applicative  ( many, some )
 import Control.Monad        ( return )
 import Data.Bifunctor       ( first )
@@ -25,7 +27,7 @@ import Data.Ord             ( Ord )
 import Data.Maybe           ( fromMaybe )
 import Data.Typeable        ( Typeable )
 import Data.Word            ( Word8 )
-import System.Environment   ( getArgs, getProgName )
+import System.Environment   ( getProgName )
 import System.Exit          ( ExitCode( ExitFailure, ExitSuccess )
                             , exitSuccess, exitWith )
 import System.IO            ( IO, hPutStrLn, putStr, putStrLn, stderr )
@@ -244,8 +246,8 @@ execParserPure' pprefs pinfo args =
 
 {-| A variant on `Options.Applicative.Extra.customExecParser`, that calls
     our `execParserPure'`. -}
-customExecParser' ∷ ParserPrefs → ParserInfo a → IO a
-customExecParser' pprefs pinfo =
+customExecParser' ∷ IO [𝕊] → ParserPrefs → ParserInfo a → IO a
+customExecParser' getArgs pprefs pinfo =
   execParserPure' pprefs pinfo ⊳ getArgs ≫ handleParseResult
 
 ----------------------------------------
@@ -255,23 +257,26 @@ customExecParser' pprefs pinfo =
      code is most commonly used within scripts, where calling --help is almost
      certainly not what was intended.
 -}
+parseOpts_ ∷ MonadIO μ ⇒ IO [𝕊]     -- ^ get cli arguments
+                         -- | base infomod for parser; typically `progDesc
+                         --   "some description"`
+                       → InfoMod α
+                       → Parser α   -- ^ proggie opts parser
+                       → μ α
+parseOpts_ get_args baseinfo prsr = liftIO $ do
+  width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
+  let pprefs   = parserPrefs (fromIntegral width)
+      mods     = fullDesc ⊕ baseinfo ⊕ usageFailure
+  customExecParser' get_args pprefs (info prsr mods)
+
+----------
+
 parseOpts ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
                         --   "some description"`
                         InfoMod α
                       → Parser α   -- ^ proggie opts parser
                       → μ α
-parseOpts baseinfo prsr = liftIO $ do
-  width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
-  let pprefs = parserPrefs (fromIntegral width)
-  customExecParser' pprefs (info prsr (fullDesc ⊕ baseinfo ⊕ usageFailure))
-
-{- | DEPRECATED parseOpts' "use parseOpts" -}
-parseOpts' ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
-                         --   "some description"`
-                         InfoMod α
-                       → Parser α   -- ^ proggie opts parser
-                       → μ α
-parseOpts' = parseOpts
+parseOpts = parseOpts_ System.Environment.getArgs
 
 ----------------------------------------
 
@@ -371,7 +376,6 @@ parsecReadM nm p = eitherReader (\ s → first show $ parse (p ⋪ eof) nm s)
 readNT ∷ ReadM (ℕ,𝕋)
 readNT =
   parsecReadM "" ((,) ⊳ (read ⊳ some digit) ⋪ char '=' ⊵ (pack ⊳ some anyChar))
--- readNT = unNatText ⊳ parsecReader
 
 ----------------------------------------
 
