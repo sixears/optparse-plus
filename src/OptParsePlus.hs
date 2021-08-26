@@ -246,9 +246,9 @@ execParserPure' pprefs pinfo args =
 
 {-| A variant on `Options.Applicative.Extra.customExecParser`, that calls
     our `execParserPure'`. -}
-customExecParser' ∷ IO [𝕊] → ParserPrefs → ParserInfo a → IO a
-customExecParser' getArgs pprefs pinfo =
-  execParserPure' pprefs pinfo ⊳ getArgs ≫ handleParseResult
+customExecParser' ∷ [𝕊] → ParserPrefs → ParserInfo a → IO a
+customExecParser' args pprefs pinfo =
+  handleParseResult $ execParserPure' pprefs pinfo args
 
 ----------------------------------------
 
@@ -257,11 +257,10 @@ customExecParser' getArgs pprefs pinfo =
      code is most commonly used within scripts, where calling --help is almost
      certainly not what was intended.
 -}
-parseOpts_ ∷ MonadIO μ ⇒ IO [𝕊]     -- ^ get cli arguments
-                         -- | base infomod for parser; typically `progDesc
-                         --   "some description"`
-                       → InfoMod α
-                       → Parser α   -- ^ proggie opts parser
+parseOpts_ ∷ MonadIO μ ⇒ [𝕊]       -- ^ cli arguments
+                       → InfoMod α -- ^ base infomod for parser; typically
+                                   --   `progDesc "some description"`
+                       → Parser α  -- ^ proggie opts parser
                        → μ α
 parseOpts_ get_args baseinfo prsr = liftIO $ do
   width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
@@ -276,7 +275,8 @@ parseOpts ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
                         InfoMod α
                       → Parser α   -- ^ proggie opts parser
                       → μ α
-parseOpts = parseOpts_ System.Environment.getArgs
+parseOpts mod p =
+  liftIO System.Environment.getArgs ≫ \ args → parseOpts_ args mod p
 
 ----------------------------------------
 
