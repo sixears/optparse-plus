@@ -1,3 +1,7 @@
+1.3.0.1 2021-10-12
+==================
+- upgrade dependencies, including monadio-plus to 2.0.0.0
+
 1.3.0.0 2021-08-26
 ==================
 - make parseOpts_ pure in args (that is, take a non-IO args)
