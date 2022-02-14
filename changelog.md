@@ -1,3 +1,7 @@
+1.3.1.0 2022-02-13
+==================
+- add parseOptsPure, twidth
+
 1.3.0.1 2021-10-12
 ==================
 - upgrade dependencies, including monadio-plus to 2.0.0.0

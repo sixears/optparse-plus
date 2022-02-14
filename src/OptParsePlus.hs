@@ -1,47 +1,34 @@
 module OptParsePlus
-  ( argS, argT, completePrintables, optT, parserPrefs, parseOpts_, parseOpts
+  ( argS, argT, completePrintables, optT, parserPrefs
+  , parseOpts_, parseOpts, parseOptsPure
   , parsecArgument, parseNE, parsecOption
   , parsecReader, parsecReadM, readMCommaSet, readNT, readT, textualArgument
-  , textualOption, usageFailure, usageFailureCode
+  , textualOption, twidth, usageFailure, usageFailureCode
 
   , ToDoc( toDoc ), (⊞)
   , finalFullStop, listDQOr, listSlash, listDQSlash, listW, toDocT, toDocTs
   )
 where
 
-import Prelude  ( Int, fromIntegral )
+import Base1
+
+import Prelude  ( Int )
 
 -- base --------------------------------
 
 import qualified System.Environment
 
-import Control.Applicative  ( many, some )
-import Control.Monad        ( return )
-import Data.Bifunctor       ( first )
-import Data.Foldable        ( Foldable, foldr, toList )
-import Data.Function        ( ($), (&), id )
-import Data.Functor         ( fmap )
+import Data.Foldable        ( Foldable )
 import Data.List            ( intersperse )
-import Data.List.NonEmpty   ( NonEmpty( (:|) ) )
-import Data.Ord             ( Ord )
 import Data.Maybe           ( fromMaybe )
-import Data.Typeable        ( Typeable )
-import Data.Word            ( Word8 )
 import System.Environment   ( getProgName )
-import System.Exit          ( ExitCode( ExitFailure, ExitSuccess )
-                            , exitSuccess, exitWith )
-import System.IO            ( IO, hPutStrLn, putStr, putStrLn, stderr )
+import System.Exit          ( exitSuccess, exitWith )
+import System.IO            ( hPutStrLn, putStr, putStrLn, stderr )
 import Text.Read            ( read )
-import Text.Show            ( Show( show ) )
-
--- base-unicode-symbols ----------------
-
-import Data.Function.Unicode  ( (∘) )
-import Data.Monoid.Unicode    ( (⊕) )
 
 -- data-textual ------------------------
 
-import Data.Textual  ( Printable, Textual, toString )
+import Data.Textual  ( Textual )
 
 -- extra -------------------------------
 
@@ -50,22 +37,6 @@ import Data.List.Extra  ( unsnoc )
 -- lens --------------------------------
 
 import Control.Lens.Tuple  ( _2 )
-
--- monadio-plus ------------------------
-
-import MonadIO  ( MonadIO, liftIO )
-
--- more-unicode ------------------------
-
-import Data.MoreUnicode.Applicative  ( (⊵), (⋪), (∤) )
-import Data.MoreUnicode.Either       ( pattern 𝕷, pattern 𝕽 )
-import Data.MoreUnicode.Functor      ( (⊳), (⊳⊳) )
-import Data.MoreUnicode.Lens         ( (⊢) )
-import Data.MoreUnicode.Monad        ( (≫) )
-import Data.MoreUnicode.Maybe        ( pattern 𝕵, pattern 𝕹 )
-import Data.MoreUnicode.Natural      ( ℕ )
-import Data.MoreUnicode.String       ( 𝕊 )
-import Data.MoreUnicode.Text         ( 𝕋 )
 
 -- nonempty-containers -----------------
 
@@ -192,20 +163,20 @@ usageFailure = failureCode (fromIntegral usageFailureCode)
 ----------------------------------------
 
 -- | Handle `ParserResult`.
-handleParseResult :: ParserResult a -> IO a
+handleParseResult ∷ MonadIO μ ⇒ ParserResult a → μ a
 handleParseResult (Success a) = return a
-handleParseResult (Failure failure) = do
-      progn <- getProgName
-      let (msg, exit) = renderFailure failure progn
-      case exit of
-        ExitSuccess -> putStrLn msg
-        _           -> hPutStrLn stderr msg
-      exitWith exit
-handleParseResult (CompletionInvoked compl) = do
-      progn <- getProgName
-      msg <- execCompletion compl progn
-      putStr msg
-      exitSuccess
+handleParseResult (Failure failure) = liftIO $ do
+  progn ← getProgName
+  let (msg, exit) = renderFailure failure progn
+  case exit of
+    ExitSuccess → putStrLn msg
+    _           → hPutStrLn stderr msg
+  exitWith exit
+handleParseResult (CompletionInvoked compl) = liftIO $ do
+  progn ← getProgName
+  msg ← execCompletion compl progn
+  putStr msg
+  exitSuccess
 
 --------------------
 
@@ -244,13 +215,11 @@ execParserPure' pprefs pinfo args =
 
 ----------------------------------------
 
-{-| A variant on `Options.Applicative.Extra.customExecParser`, that calls
-    our `execParserPure'`. -}
-customExecParser' ∷ [𝕊] → ParserPrefs → ParserInfo a → IO a
-customExecParser' args pprefs pinfo =
-  handleParseResult $ execParserPure' pprefs pinfo args
-
-----------------------------------------
+{- | Terminal width of stdout, in characters; default to 80 if terminal has no
+     width (e.g., is a file redirect. -}
+twidth ∷ MonadIO μ ⇒ μ ℕ
+twidth = let w = (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
+          in liftIO $ fromIntegral ∘ fromMaybe 80 ⊳ w
 
 {- | Parse options, with description, helper, shows help on error and missing
      parameters.  Also exits 2 if --help is called - this is because the exit
@@ -262,14 +231,19 @@ parseOpts_ ∷ MonadIO μ ⇒ [𝕊]       -- ^ cli arguments
                                    --   `progDesc "some description"`
                        → Parser α  -- ^ proggie opts parser
                        → μ α
-parseOpts_ get_args baseinfo prsr = liftIO $ do
-  width ← fromMaybe 80 ⊳ (TerminalSize.width @Int ⊳⊳ TerminalSize.size)
-  let pprefs   = parserPrefs (fromIntegral width)
+parseOpts_ args baseinfo prsr =
+  handleParseResult ∘ parseOptsPure args baseinfo prsr ≪ twidth
+
+{- | parse an argument list, adding in our standard settings -}
+parseOptsPure ∷ [𝕊] → InfoMod α → Parser α → ℕ → ParserResult α
+parseOptsPure args baseinfo prsr width =
+  let pprefs   = parserPrefs width
       mods     = fullDesc ⊕ baseinfo ⊕ usageFailure
-  customExecParser' get_args pprefs (info prsr mods)
+   in execParserPure' pprefs (info prsr mods) args
 
 ----------
 
+{- | parse the arguments given on the command line -}
 parseOpts ∷ MonadIO μ ⇒ -- | base infomod for parser; typically `progDesc
                         --   "some description"`
                         InfoMod α
