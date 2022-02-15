@@ -1,5 +1,5 @@
 module OptParsePlus
-  ( argS, argT, completePrintables, optT, parserPrefs
+  ( argS, argT, completePrintables, optT, handleParserResult, parserPrefs
   , parseOpts_, parseOpts, parseOptsPure
   , parsecArgument, parseNE, parsecOption
   , parsecReader, parsecReadM, readMCommaSet, readNT, readT, textualArgument
@@ -162,17 +162,18 @@ usageFailure = failureCode (fromIntegral usageFailureCode)
 
 ----------------------------------------
 
--- | Handle `ParserResult`.
-handleParseResult ∷ MonadIO μ ⇒ ParserResult a → μ a
-handleParseResult (Success a) = return a
-handleParseResult (Failure failure) = liftIO $ do
+{- | in case of a failed opts parse: write a message to stderr & exit; in case
+     of `CompletionInvoked`, exit normally. -}
+handleParserResult ∷ MonadIO μ ⇒ ParserResult a → μ a
+handleParserResult (Success a) = return a
+handleParserResult (Failure failure) = liftIO $ do
   progn ← getProgName
   let (msg, exit) = renderFailure failure progn
   case exit of
     ExitSuccess → putStrLn msg
     _           → hPutStrLn stderr msg
   exitWith exit
-handleParseResult (CompletionInvoked compl) = liftIO $ do
+handleParserResult (CompletionInvoked compl) = liftIO $ do
   progn ← getProgName
   msg ← execCompletion compl progn
   putStr msg
@@ -232,7 +233,7 @@ parseOpts_ ∷ MonadIO μ ⇒ [𝕊]       -- ^ cli arguments
                        → Parser α  -- ^ proggie opts parser
                        → μ α
 parseOpts_ args baseinfo prsr =
-  handleParseResult ∘ parseOptsPure args baseinfo prsr ≪ twidth
+  handleParserResult ∘ parseOptsPure args baseinfo prsr ≪ twidth
 
 {- | parse an argument list, adding in our standard settings -}
 parseOptsPure ∷ [𝕊] → InfoMod α → Parser α → ℕ → ParserResult α

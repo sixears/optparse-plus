@@ -1,3 +1,7 @@
+1.3.2.0 2022-02-15
+==================
+- export handleParserResult
+
 1.3.1.0 2022-02-13
 ==================
 - add parseOptsPure, twidth
