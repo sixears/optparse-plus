@@ -1,3 +1,7 @@
+1.3.2.1 2022-11-13
+==================
+- fix fixed-package-name typo in flake-build-utils
+
 1.3.2.0 2022-02-15
 ==================
 - export handleParserResult
