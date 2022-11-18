@@ -5,9 +5,9 @@
     nixpkgs.url      = "github:nixos/nixpkgs/be44bf67"; # nixos-22.05 2022-10-15
     build-utils.url  = "github:sixears/flake-build-utils/r1.0.0.11";
 
-    base1.url        = "github:sixears/base1/r0.0.9.18";
-    parsec-plus.url  = "github:sixears/parsec-plus/r1.1.1.13";
-    parser-plus.url  = "github:sixears/parser-plus/r1.0.7.10";
+    base1.url        = "github:sixears/base1/r0.0.9.19";
+    parsec-plus.url  = "github:sixears/parsec-plus/r1.1.1.14";
+    parser-plus.url  = "github:sixears/parser-plus/r1.0.7.11";
     textual-plus.url = "github:sixears/textual-plus/r1.0.2.15";
   };
 
