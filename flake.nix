@@ -5,9 +5,9 @@
     nixpkgs.url      = "github:nixos/nixpkgs/be44bf67"; # nixos-22.05 2022-10-15
     build-utils.url  = github:sixears/flake-build-utils/r1.0.0.13;
 
-    base1.url        = github:sixears/base1/r0.0.9.31;
-    parsec-plus.url  = github:sixears/parsec-plus/r1.1.1.41;
-    parser-plus.url  = github:sixears/parser-plus/r1.0.7.25;
+    base1.url        = github:sixears/base1/r0.0.9.32;
+    parsec-plus.url  = github:sixears/parsec-plus/r1.1.1.42;
+    parser-plus.url  = github:sixears/parser-plus/r1.0.7.26;
     textual-plus.url = github:sixears/textual-plus/r1.0.2.25;
   };
 
@@ -21,7 +21,7 @@
                     }:
         mkDerivation {
           pname = "optparse-plus";
-          version = "1.3.2.38";
+          version = "1.3.2.39";
           src = ./.;
           libraryHaskellDepends = [
             base data-textual extra lens nonempty-containers
