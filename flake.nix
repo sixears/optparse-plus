@@ -21,7 +21,7 @@
                     }:
         mkDerivation {
           pname = "optparse-plus";
-          version = "1.3.2.35"
+          version = "1.3.2.37";
           src = ./.;
           libraryHaskellDepends = [
             base data-textual extra lens nonempty-containers
