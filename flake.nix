@@ -6,7 +6,7 @@
     build-utils.url  = github:sixears/flake-build-utils/r1.0.0.13;
 
     base1.url        = github:sixears/base1/r0.0.9.30;
-    parsec-plus.url  = github:sixears/parsec-plus/r1.1.1.33;
+    parsec-plus.url  = github:sixears/parsec-plus/r1.1.1.34;
     parser-plus.url  = github:sixears/parser-plus/r1.0.7.22;
     textual-plus.url = github:sixears/textual-plus/r1.0.2.25;
   };
