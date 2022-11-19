@@ -6,7 +6,7 @@
     build-utils.url  = github:sixears/flake-build-utils/r1.0.0.13;
 
     base1.url        = github:sixears/base1/r0.0.9.30;
-    parsec-plus.url  = github:sixears/parsec-plus/r1.1.1.34;
+    parsec-plus.url  = github:sixears/parsec-plus/r1.1.1.35;
     parser-plus.url  = github:sixears/parser-plus/r1.0.7.23;
     textual-plus.url = github:sixears/textual-plus/r1.0.2.25;
   };
@@ -14,9 +14,21 @@
   outputs = { self, nixpkgs, build-utils
             , base1, parsec-plus, parser-plus, textual-plus }:
     build-utils.lib.hOutputs self nixpkgs "optparse-plus" {
-      deps = {
-        inherit base1 parsec-plus parser-plus textual-plus;
-      };
       ghc = p: p.ghc8107; # for tfmt
+      callPackage = { mkDerivation, lib, mapPkg, system
+                    , base, data-textual, extra, lens, nonempty-containers
+                    , optparse-applicative, parsec, parsers, terminal-size, text
+                    }:
+        mkDerivation {
+          pname = "optparse-plus";
+          version = "1.3.2.30";
+          src = ./.;
+          libraryHaskellDepends = [
+            base data-textual extra lens nonempty-containers
+            optparse-applicative parsec parsers terminal-size text
+          ] ++ mapPkg [ base1 parsec-plus parser-plus textual-plus ];
+          description = "manage info.yaml";
+          license = lib.licenses.mit;
+        };
     };
 }
