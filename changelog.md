@@ -1,3 +1,7 @@
+1.3.3.0 2023-06-05
+==================
+- use Textual-Plus-1.1.2.0, define our own parseTextual
+
 1.3.2.42 2022-11-22
 ===================
 - remove flake.nix, flake.lock

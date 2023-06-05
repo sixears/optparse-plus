@@ -12,7 +12,7 @@ where
 
 import Base1
 
-import Prelude  ( Int )
+import Prelude  ( Int, error )
 
 -- base --------------------------------
 
@@ -21,6 +21,7 @@ import qualified System.Environment
 import Data.Foldable        ( Foldable )
 import Data.List            ( intersperse )
 import Data.Maybe           ( fromMaybe )
+import Data.Typeable        ( typeOf )
 import System.Environment   ( getProgName )
 import System.Exit          ( exitSuccess, exitWith )
 import System.IO            ( hPutStrLn, putStr, putStrLn, stderr )
@@ -28,7 +29,7 @@ import Text.Read            ( read )
 
 -- data-textual ------------------------
 
-import Data.Textual  ( Textual )
+import Data.Textual  ( Parsed( Malformed, Parsed ), Textual, parseText )
 
 -- extra -------------------------------
 
@@ -93,15 +94,31 @@ import ParserPlus  ( commaSet )
 
 import qualified  System.Console.Terminal.Size  as  TerminalSize
 
--- textual-plus ------------------------
-
-import TextualPlus  ( parseTextual )
-
 -- text --------------------------------
 
 import Data.Text  ( intercalate, pack, unpack, words )
 
 --------------------------------------------------------------------------------
+
+{- | Parse a printable value, give user-friendly error messages.
+     This is mostly an adapter from `Printable` to `Either`; to work with, e.g.,
+     `Options.Applicative.eitherReader`.
+ -}
+parseTextual ∷ ∀ β α η . (Textual β, Printable α, Typeable β, MonadError 𝕊 η) ⇒ α → η β
+parseTextual (toText → z) =
+  let fromParsed (Parsed a)      = a
+      -- this function exists solely to provide a hypothetical value to reflect
+      -- on
+      fromParsed (Malformed _ _) = error "this should never be evaluated"
+      parsedZ                    = parseText z
+      typ                        = typeOf $ fromParsed parsedZ
+   in case parsedZ of
+        Parsed a       → return a
+        Malformed [] x → throwError ∘ toString $
+                           [fmtT|failed to parse '%t' as '%w': %s|] z typ x
+        Malformed xs x → let msg = [fmtT|failed to parse '%t' as '%w': [%L] %s|]
+                                   z typ xs x
+                          in throwError (toString msg)
 
 readT ∷ (Textual α, Typeable α) ⇒ ReadM α
 readT = eitherReader parseTextual
