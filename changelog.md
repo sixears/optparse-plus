@@ -1,3 +1,8 @@
+1.3.3.1 2024-06-24
+==================
+- use optparse-applicative >= 0.18.0.0, which lost
+  Options.Applicative.Help.Pretty.text
+
 1.3.3.0 2023-06-05
 ==================
 - use Textual-Plus-1.1.2.0, define our own parseTextual

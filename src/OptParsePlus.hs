@@ -1,104 +1,127 @@
+{-# LANGUAGE UnicodeSyntax #-}
 module OptParsePlus
-  ( argS, argT, completePrintables, optT, handleParserResult, parserPrefs
-  , parseOpts_, parseOpts, parseOptsPure
-  , parsecArgument, parseNE, parsecOption
-  , parsecReader, parsecReadM, readMCommaSet, readNT, readT, textualArgument
-  , textualOption, twidth, usageFailure, usageFailureCode
-
-  , ToDoc( toDoc ), (⊞)
-  , finalFullStop, listDQOr, listSlash, listDQSlash, listW, toDocT, toDocTs
-  )
-where
+  ( ToDoc(toDoc)
+  , argS
+  , argT
+  , completePrintables
+  , finalFullStop
+  , handleParserResult
+  , listDQOr
+  , listDQSlash
+  , listSlash
+  , listW
+  , optT
+  , parseNE
+  , parseOpts
+  , parseOptsPure
+  , parseOpts_
+  , parsecArgument
+  , parsecOption
+  , parsecReadM
+  , parsecReader
+  , parserPrefs
+  , readMCommaSet
+  , readNT
+  , readT
+  , textualArgument
+  , textualOption
+  , toDocT
+  , toDocTs
+  , twidth
+  , usageFailure
+  , usageFailureCode
+  , (⊞)
+  ) where
 
 import Base1
 
-import Prelude  ( Int, error )
+import Prelude ( Int, error )
 
 -- base --------------------------------
 
-import qualified System.Environment
+import System.Environment qualified
 
-import Data.Foldable        ( Foldable )
-import Data.List            ( intersperse )
-import Data.Maybe           ( fromMaybe )
-import Data.Typeable        ( typeOf )
-import System.Environment   ( getProgName )
-import System.Exit          ( exitSuccess, exitWith )
-import System.IO            ( hPutStrLn, putStr, putStrLn, stderr )
-import Text.Read            ( read )
+import Data.Foldable      ( Foldable )
+import Data.List          ( intersperse )
+import Data.Maybe         ( fromMaybe )
+import Data.Typeable      ( typeOf )
+import System.Environment ( getProgName )
+import System.Exit        ( exitSuccess, exitWith )
+import System.IO          ( hPutStrLn, putStr, putStrLn, stderr )
+import Text.Read          ( read )
 
 -- data-textual ------------------------
 
-import Data.Textual  ( Parsed( Malformed, Parsed ), Textual, parseText )
+import Data.Textual ( Parsed(Malformed, Parsed), Textual, parseText )
 
 -- extra -------------------------------
 
-import Data.List.Extra  ( unsnoc )
+import Data.List.Extra ( unsnoc )
 
 -- lens --------------------------------
 
-import Control.Lens.Tuple  ( _2 )
+import Control.Lens.Tuple ( _2 )
 
 -- nonempty-containers -----------------
 
-import Data.Set.NonEmpty  ( NESet )
+import Data.Set.NonEmpty ( NESet )
 
 -- optparse-applicative ----------------
 
-import qualified  Options.Applicative.Extra
-import qualified  Options.Applicative.Types
+import Options.Applicative.Extra qualified
+import Options.Applicative.Types qualified
 
-import Options.Applicative.BashCompletion
-                              ( bashCompletionParser )
-import Options.Applicative.Builder
-                              ( ArgumentFields, HasCompleter, InfoMod, Mod
-                              , OptionFields, ReadM
-                              , argument, columns, completeWith, eitherReader
-                              , failureCode, fullDesc, info, option, prefs
-                              )
-import Options.Applicative.Common
-                              ( runParserInfo )
-import Options.Applicative.Extra
-                              ( ParserFailure, ParserPrefs, renderFailure )
-import Options.Applicative.Help.Pretty
-                              ( Doc, (<+>), comma, dquotes, empty, fillSep
-                              , punctuate, space, text, vcat )
-import Options.Applicative.Internal
-                              ( runP )
-import Options.Applicative.Types
-                              ( Context, Parser, ParserFailure( ParserFailure )
-                              , ParserInfo, ParserHelp
-                              , ParserResult( CompletionInvoked, Failure
-                                            , Success )
-                              , execCompletion, infoParser
-                              )
+import Options.Applicative.BashCompletion ( bashCompletionParser )
+import Options.Applicative.Builder        ( ArgumentFields, HasCompleter,
+                                            InfoMod, Mod, OptionFields, ReadM,
+                                            argument, columns, completeWith,
+                                            eitherReader, failureCode, fullDesc,
+                                            info, option, prefs )
+import Options.Applicative.Common         ( runParserInfo )
+import Options.Applicative.Extra          ( ParserFailure, ParserPrefs,
+                                            renderFailure )
+import Options.Applicative.Help.Pretty    ( Doc, comma, dquotes, emptyDoc,
+                                            fillSep, pretty, punctuate, space,
+                                            vcat, (<+>) )
+import Options.Applicative.Internal       ( runP )
+import Options.Applicative.Types          ( Context, Parser,
+                                            ParserFailure(ParserFailure),
+                                            ParserHelp, ParserInfo,
+                                            ParserResult(CompletionInvoked, Failure, Success),
+                                            execCompletion, infoParser )
 
 -- parsec ------------------------------
 
-import Text.Parsec  ( Parsec, SourceName, parse )
+import Text.Parsec ( Parsec, SourceName, parse )
 
 -- parsec-plus -------------------------
 
-import ParsecPlus  ( ParseError, Parsecable, parsec )
+import ParsecPlus ( ParseError, Parsecable, parsec )
 
 -- parsers -----------------------------
 
-import Text.Parser.Char         ( anyChar, char, digit )
-import Text.Parser.Combinators  ( eof )
+import Text.Parser.Char        ( anyChar, char, digit )
+import Text.Parser.Combinators ( eof )
 
 -- parser-plus -------------------------
 
-import ParserPlus  ( commaSet )
+import ParserPlus ( commaSet )
 
 -- terminal-size -----------------------
 
-import qualified  System.Console.Terminal.Size  as  TerminalSize
+import System.Console.Terminal.Size qualified as TerminalSize
 
 -- text --------------------------------
 
-import Data.Text  ( intercalate, pack, unpack, words )
+import Data.Text ( intercalate, pack, unpack, words )
 
 --------------------------------------------------------------------------------
+
+{-| convert a text word to Doc.  This used to be in optparse-applicative
+    0.17.1.0, but was removed in 0.18.0.0 when that lib switched to using the
+    prettyprinter library -}
+text ∷ 𝕊 → Doc
+text = pretty
 
 {- | Parse a printable value, give user-friendly error messages.
      This is mostly an adapter from `Printable` to `Either`; to work with, e.g.,
@@ -162,8 +185,7 @@ completePrintables = completeWith ∘ fmap toString ∘ toList
 
 {- | Standard parser preferences.  Input is terminal width. -}
 parserPrefs ∷ ℕ → ParserPrefs
-parserPrefs width = let -- width = (fromIntegral $ fromMaybe 80 w)
-                     in prefs $ {- showHelpOnError ⊕ -} {- showHelpOnEmpty ⊕ -} columns (fromIntegral width)
+parserPrefs width = prefs $ columns (fromIntegral width)
 
 ----------------------------------------
 
@@ -326,7 +348,7 @@ toDocTs = toDoc
 {- | Create a list by joining words (which are surrounded with double-quotes)
      with ", ", except for the last, which is joined with "or". -}
 listDQOr ∷ [𝕊] → Doc
-listDQOr (unsnoc → 𝕹)     = empty
+listDQOr (unsnoc → 𝕹)     = emptyDoc
 listDQOr (unsnoc → 𝕵 (ws,w)) =
   fillSep (punctuate comma (dquotes ∘ text ⊳ ws)) ⊞ text "or" ⊞ dquotes (text w)
 
@@ -340,14 +362,14 @@ listSlash xs = toDoc $ intercalate "/" (pack ⊳ xs)
 
 {- | Create a list by joining double-quoted strings with "/". -}
 listDQSlash ∷ [𝕊] → Doc
-listDQSlash []     = empty
+listDQSlash []     = emptyDoc
 listDQSlash (x:xs) =
   foldr (\ a b → a ⊕ text "/" ⊕ b) (dquotes $ text x) (dquotes ∘ text ⊳ xs)
 
 {- | Add a full stop (period) to the final doc in a list. -}
 finalFullStop ∷ [Doc] → [Doc]
 finalFullStop (unsnoc → 𝕵 (ds,d)) = ds ⊕ [d ⊕ text "."]
-finalFullStop (unsnoc → 𝕹)     = []
+finalFullStop (unsnoc → 𝕹)        = []
 
 ----------------------------------------
 
