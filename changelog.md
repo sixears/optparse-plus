@@ -1,3 +1,7 @@
+1.3.4.0 2024-09-17
+==================
+- +OptReader(readM)
+
 1.3.3.1 2024-06-24
 ==================
 - use optparse-applicative >= 0.18.0.0, which lost

@@ -1,6 +1,7 @@
 {-# LANGUAGE UnicodeSyntax #-}
 module OptParsePlus
-  ( ToDoc(toDoc)
+  ( OptReader(..)
+  , ToDoc(toDoc)
   , argS
   , argT
   , completePrintables
@@ -116,6 +117,13 @@ import System.Console.Terminal.Size qualified as TerminalSize
 import Data.Text ( intercalate, pack, unpack, words )
 
 --------------------------------------------------------------------------------
+
+{-| class for things that have a `ReadM` instance -}
+class OptReader α where
+  {-| `ReadM` instance for `α` -}
+  readM ∷ ReadM α
+
+------------------------------------------------------------
 
 {-| convert a text word to Doc.  This used to be in optparse-applicative
     0.17.1.0, but was removed in 0.18.0.0 when that lib switched to using the
